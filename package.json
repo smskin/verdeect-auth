@@ -7,11 +7,24 @@
     "node": ">=20"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./nest": "./src/nest/index.ts",
-    "./testing": "./src/testing/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./nest": {
+      "types": "./src/nest/index.ts",
+      "development": "./src/nest/index.ts",
+      "default": "./dist/nest/index.js"
+    },
+    "./testing": {
+      "types": "./src/testing/index.ts",
+      "development": "./src/testing/index.ts",
+      "default": "./dist/testing/index.js"
+    }
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

@@ -4,7 +4,7 @@
 
 > Проверка токенов доступа `at+jwt` для серверов ресурсов «Вердикта» (prd.md §7.5, `01` §5.3–5.4).
 
-Ядро (`verdeect-auth`) — чистая функция на `jose` без Nest и инфраструктуры. Подпути: `verdeect-auth/nest` — guard и декораторы, `verdeect-auth/testing` — подписчик с mock JWKS и векторы. Пакет workspace; `exports` указывают на исходники `.ts` (сборка в JS — этап E6).
+Ядро (`verdeect-auth`) — чистая функция на `jose` без Nest и инфраструктуры. Подпути: `verdeect-auth/nest` — guard и декораторы, `verdeect-auth/testing` — подписчик с mock JWKS и векторы. Пакет workspace, собирается в `dist` (см. «Сборка»). Первый потребитель — Identity: `/api/*` принимает сервисные токены через `VerdeectAuthModule` и `VerdeectAuthGuard`.
 
 ## Проверка токена
 
@@ -148,11 +148,24 @@ await identity.close();
 - Ролей и прав не знает: права — Platform `authz/check` в сервисе после guard'ов (D9).
 - Актуальность `pep` агента не проверяет — это делает сервис (`01` §6.4).
 
+## Сборка
+
+`build` — `tsc -p tsconfig.build.json` → `dist/` (JS и `.d.ts`, без тестов). Условные `exports` у `.`, `./nest`, `./testing`:
+
+| Условие       | Куда ведёт         | Кто использует                                                             |
+| ------------- | ------------------ | -------------------------------------------------------------------------- |
+| `types`       | `src/**/index.ts`  | `tsc` и редактор в workspace                                               |
+| `development` | `src/**/index.ts`  | Vitest (условие Vite по умолчанию) — тесты без сборки пакета               |
+| `default`     | `dist/**/index.js` | Node: Identity в образе и в стеке разработки (`pnpm build` собирает пакет) |
+
+`apps/identity` `build` собирает пакет первым; образ Identity копирует `package.json` и `dist` пакета.
+
 ## Разработка
 
 ```bash
 corepack pnpm --filter verdeect-auth test       # unit-тесты уровня L
 corepack pnpm --filter verdeect-auth typecheck
+corepack pnpm --filter verdeect-auth build      # dist/
 ```
 
 ## See Also
