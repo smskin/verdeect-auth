@@ -9,7 +9,7 @@
 ## Обоснование выбора
 
 - **Тип проекта:** npm-библиотека, публичный пакет; поведение заморожено контрактом PRD Identity §7.5.
-- **Стек:** TypeScript (ESM, Node ≥ 20), `jose`, NestJS 12 как необязательная peer-зависимость, Vitest, pnpm.
+- **Стек:** TypeScript (ESM, Node ≥ 22.12), `jose`, NestJS 12 как необязательная peer-зависимость, Vitest, pnpm.
 - **Ключевой фактор:** граница между слоями — это граница **установки и загрузки**, а не только кода. Ядро должно работать без `@nestjs/*` (AC-2). `testing` не должен попасть в production (FR-2, BR-4, AC-1). Нужна жёсткая однонаправленность импортов, а не богатая доменная модель.
 - **Отвергнуто:** Structured Modules и Explicit Architecture — один контекст из ~8 файлов, порты и модули добавили бы только церемонии. Отдельный пакет `@verdeect/auth-testing` отвергнут в D-6.
 
@@ -35,7 +35,7 @@ verdeect-auth/
 │       └── vectors.ts              #   tokenVectors V-1…V-8
 ├── tests/
 │   ├── consumer/                   # шаблон проекта-потребителя (FR-8, AC-1–AC-3, AC-7)
-│   └── *.spec.ts                   # проверки пакета: exports, состав архива, ссылки в docs (AC-4, AC-9, AC-10)
+│   └── package/*.spec.ts           # проверки пакета: архив, потребитель, выпуск, exports, docs (AC-1–AC-11)
 ├── docs/                           # руководства (FR-9): getting-started, nestjs, testing, errors, releasing
 ├── dist/                           # результат tsc (в git не попадает): *.js + *.d.ts
 ├── requirements/                   # PRD (в архив не попадает)
@@ -45,12 +45,13 @@ verdeect-auth/
 ├── vitest.config.ts
 ├── eslint.config.js                # flat config + TSDoc публичного API
 ├── Makefile                        # install, lint, analyse, test, build, pack-check, ci, clean
-├── .gitlab-ci.yml                  # install → lint → test → build → publish (по тегу)
+├── .github/workflows/ci.yml        # lint → test (Node 22, 24) → build → publish (по тегу)
+├── scripts/publish.mjs             # публикация из CI: тег = version, версии нет в npm
 ├── README.md
 └── CHANGELOG.md
 ```
 
-`tests/`, `docs/`, `eslint.config.js`, `Makefile`, `.gitlab-ci.yml`, `CHANGELOG.md` появляются на этапах E1–E2. Пустые каталоги заранее не создаются.
+`tests/`, `docs/`, `scripts/`, `eslint.config.js`, `Makefile`, `.github/workflows/ci.yml`, `CHANGELOG.md` появляются на этапах E1–E2. Пустые каталоги заранее не создаются.
 
 ## Правила зависимостей
 

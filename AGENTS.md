@@ -8,11 +8,12 @@
 
 ## Технологический стек
 
-- **Язык:** TypeScript (ESM, Node ≥ 20)
+- **Язык:** TypeScript (ESM, Node ≥ 22.12; CI — Node 22 и 24)
 - **Фреймворк:** NestJS 12 — необязательная peer-зависимость
 - **JWT:** `jose`
 - **Тесты:** Vitest + `unplugin-swc`
 - **Пакетный менеджер:** pnpm
+- **CI/выпуск:** GitHub Actions; `npm publish` только по тегу `v<semver>` (`docs/releasing.md`)
 - **База данных / ORM / брокер / Docker:** нет (библиотека)
 
 ## Структура проекта
@@ -40,10 +41,17 @@ verdeect-auth/
 │   │   ├── tarball.spec.ts       # состав архива и package.json (AC-1, AC-4, FR-1–FR-4, BR-3)
 │   │   ├── consumer.spec.ts      # установленный проект-потребитель (AC-1–AC-3, AC-7)
 │   │   ├── quality.spec.ts       # publint, attw, перенесённые unit-тесты (AC-5, AC-6)
+│   │   ├── release.spec.ts       # workflow, сухой прогон публикации, Makefile, CHANGELOG (AC-8, AC-11)
+│   │   ├── exports.spec.ts       # экспорты по §8, README/CHANGELOG, правило TSDoc (AC-9)
+│   │   ├── docs.spec.ts          # файлы §9, ссылки, разделы README (AC-10, BR-2)
 │   │   └── support/              # pack.ts, consumer-project.ts
 │   └── consumer/                 # шаблоны проекта-потребителя
 │       ├── core/                 # без NestJS: smoke.mjs
 │       └── full/                 # NestJS 12: nest-smoke.mjs, src/*.ts, tsconfig NodeNext/bundler
+├── docs/                         # руководства: getting-started, nestjs, testing, errors, releasing
+├── scripts/
+│   └── publish.mjs               # публикация из CI: тег = version, версии нет в npm (FR-11)
+├── .github/workflows/ci.yml      # lint → test (Node 22, 24) → build → publish (тег v*)
 ├── requirements/                 # пакеты требований (PRD)
 │   ├── INDEX.md
 │   └── 0000-verdeect-auth/       # prd.md, README.md (этапы E1–E2)
@@ -59,7 +67,9 @@ verdeect-auth/
 ├── .prettierignore
 ├── vitest.config.ts              # unit-контур
 ├── vitest.package.config.ts      # контур проверок пакета
-└── Makefile                      # единая точка входа: make help, make ci
+├── Makefile                      # единая точка входа: make help, make ci
+├── README.md
+└── CHANGELOG.md                  # Keep a Changelog
 ```
 
 ## Команды
@@ -88,11 +98,13 @@ make ci          # lint analyse test build pack-check
 
 ## Документация
 
-| Документ | Путь                                        | Описание                                                                         |
-| -------- | ------------------------------------------- | -------------------------------------------------------------------------------- |
-| README   | `README.md`                                 | назначение, подключение, правила V-1…V-8, `Principal`, NestJS, тесты потребителя |
-| PRD      | `requirements/0000-verdeect-auth/prd.md`    | требования к выносу и выпуску 1.0.0                                              |
-| Этапы    | `requirements/0000-verdeect-auth/README.md` | E1 «Автономный пакет», E2 «Документация и выпуск»                                |
+| Документ  | Путь                                        | Описание                                                                  |
+| --------- | ------------------------------------------- | ------------------------------------------------------------------------- |
+| README    | `README.md`                                 | назначение, подключение, правила V-1…V-8, `Principal`, NestJS, тесты, API |
+| Гайды     | `docs/*.md`                                 | подключение, NestJS, тесты сервиса, ошибки, выпуск                        |
+| CHANGELOG | `CHANGELOG.md`                              | изменения по версиям, «Как обновиться» у мажорных                         |
+| PRD       | `requirements/0000-verdeect-auth/prd.md`    | требования к выносу и выпуску 1.0.0                                       |
+| Этапы     | `requirements/0000-verdeect-auth/README.md` | E1 «Автономный пакет», E2 «Документация и выпуск»                         |
 
 ## Файлы контекста ИИ
 
@@ -111,4 +123,6 @@ make ci          # lint analyse test build pack-check
   - Правильно: сначала `git checkout main`, затем `git pull origin main`
 - Поведение библиотеки (V-1…V-8, `Principal`, ответы guard'а, векторы) не меняется без мажорной версии (BR-1). Источник контракта — PRD Identity §7.5.
 - Ядро (`src/*.ts`) не импортирует `@nestjs/*`, `rxjs`, `reflect-metadata` и `src/testing/`. `src/nest/` не импортирует `src/testing/` (BR-4).
+- Новый публичный экспорт — TSDoc (проверяет `make lint`), строка в таблице «API» README и в CHANGELOG; тест AC-9 сверяет список с PRD §8.
+- Выпуск — только тег `vX.Y.Z` и CI (`docs/releasing.md`); ручной `npm publish` запрещён.
 - Для `.ts`-файлов используйте скилы `nestjs-specialist` и `nestjs-code` (тип `generic` для компонентов библиотеки).

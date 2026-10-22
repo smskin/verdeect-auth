@@ -18,14 +18,14 @@ npm-библиотека, которой каждый сервер ресурс�
 ## Технологический стек
 
 - **Язык:** TypeScript 5.9, `strict`, ESM (`"type": "module"`, `NodeNext`), цель ES2023
-- **Рантайм:** Node.js ≥ 20 (CI: 20 и 22)
+- **Рантайм:** Node.js ≥ 22.12 (CI: 22 и 24; D-7)
 - **Фреймворк:** NestJS 12 — необязательная peer-зависимость (`@nestjs/common`, `@nestjs/core`, `reflect-metadata`, `rxjs`, все `optional`)
 - **Криптография/JWT:** `jose` (единственная runtime-зависимость, точная версия)
 - **Тесты:** Vitest + `unplugin-swc`; HTTP-тесты guard'а на `@nestjs/platform-fastify`; JWKS — локальный сервер `createTestSigner`
 - **Пакетный менеджер:** pnpm (точные пины)
 - **Проверки пакета:** `publint`, `@arethetypeswrong/cli` (`esm-only`), состав `npm pack --dry-run`, проект-потребитель `tests/consumer/`
 - **Линт/формат:** ESLint (flat config, typescript-eslint, TSDoc-проверка публичного API) + Prettier
-- **CI/выпуск:** Makefile + GitLab CI, `npm publish --access public` только по защищённому тегу `v<semver>`
+- **CI/выпуск:** Makefile + GitHub Actions (`.github/workflows/ci.yml`), `npm publish --access public` через `scripts/publish.mjs` только по защищённому тегу `v<semver>`
 - **База данных, ORM, брокер, Docker, GlitchTip:** нет. Это библиотека, а не сервис.
 
 ## Архитектурные заметки
@@ -37,13 +37,13 @@ npm-библиотека, которой каждый сервер ресурс�
 Подробные правила архитектуры — `.ai-factory/ARCHITECTURE.md`.
 Паттерн: Layered Architecture (библиотека «ядро + адаптеры»)
 
-## Текущее состояние (после E1)
+## Текущее состояние (после E2)
 
-Пакет автономный: `@verdeect/auth` 1.0.0, `exports` из `dist`, `./testing` только с условием `development`, peer-зависимости `^` и `optional`, свой `tsconfig.json`, ESLint/Prettier, `pnpm-lock.yaml`. Проверки пакета — `pnpm pack:check` (publint, attw, `tests/package/`). Ещё нет: Makefile, `.gitlab-ci.yml`, `CHANGELOG.md`, `docs/` (E2).
+Пакет готов к выпуску 1.0.0: `exports` из `dist`, `./testing` только с условием `development`, peer-зависимости `^` и `optional`, `engines.node >=22.12`. Документация — README, `docs/*`, `CHANGELOG.md`, TSDoc у каждого экспорта (правило `eslint-plugin-jsdoc`). Проверки — `make ci` (lint, analyse, test, build, pack-check), в CI — GitHub Actions; публикация по тегу `v1.0.0` (`docs/releasing.md`).
 
 ## Нефункциональные требования
 
-- **Безопасность:** в пакете нет секретов, URL окружений и бизнес-логики сверх контракта токена (BR-3). `testing` недоступен в production (FR-2, BR-4). Публикация только из CI с `NPM_TOKEN` (masked, protected).
+- **Безопасность:** в пакете нет секретов, URL окружений и бизнес-логики сверх контракта токена (BR-3). `testing` недоступен в production (FR-2, BR-4). Публикация только из CI с `NPM_TOKEN` (секрет environment `npm`, маскируется в логах).
 - **Логи:** только guard, через `Logger` NestJS. В лог идут `sub`, `clientId`, `kind`, `kid`, `iss` (обрезка до 256 символов). Токен, `Authorization`, email и имена не пишутся. Ядро не логирует.
 - **Ошибки:** клиент получает 401 без причины. Причина (`rule`, `reason`) остаётся в логе. Сбой JWKS даёт 500, а не 401. Ошибки конфигурации — исключение при старте.
 - **Совместимость и версии:** semver (BR-1). Ломающее изменение контракта — только мажорная версия. Потребители пинят версию точно (BR-2).
