@@ -1,13 +1,32 @@
-# verdeect-auth
+# @verdeect/auth
 
-> Проверка токенов доступа `at+jwt` для серверов ресурсов «Вердикта» (prd.md §7.5, `01` §5.3–5.4).
+Проверка токенов доступа `at+jwt` для серверов ресурсов Вердикта 2.0. Каждый сервис `https://api.verdeect.ru` принимает токены только через эту библиотеку: ядро на `jose` проверяет правила V-1…V-8 и строит `Principal`, модуль NestJS даёт guard и декораторы, подпуть `testing` — подписчик с локальным JWKS и тестовые векторы.
 
-Ядро (`verdeect-auth`) — чистая функция на `jose` без Nest и инфраструктуры. Подпути: `verdeect-auth/nest` — guard и декораторы, `verdeect-auth/testing` — подписчик с mock JWKS и векторы. Пакет workspace, собирается в `dist` (см. «Сборка»). Первый потребитель — Identity: `/api/*` принимает сервисные токены через `VerdeectAuthModule` и `VerdeectAuthGuard`.
+## Совместимость
 
-## Проверка токена
+|             |                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| Node.js     | ≥ 22.12 (проверяется на 22 и 24; Node 20 не поддерживается)                                             |
+| Модули      | только ESM (`import`), CommonJS-сборки нет                                                              |
+| NestJS      | 12 — необязательная peer-зависимость, нужна только для `@verdeect/auth/nest`                            |
+| Зависимости | `jose` (точная версия); `@nestjs/common`, `@nestjs/core`, `reflect-metadata`, `rxjs` — peer, `optional` |
+
+## Установка
+
+Ставьте точную версию: потребители пинят её, обновление — осознанный шаг по CHANGELOG.
+
+```bash
+pnpm add @verdeect/auth@1.0.0 --save-exact
+# или
+npm install @verdeect/auth@1.0.0 --save-exact
+```
+
+## Быстрый старт
+
+### Без NestJS (скрипт, воркер)
 
 ```ts
-import { createVerifier, VerifyError } from 'verdeect-auth';
+import { createVerifier, VerifyError } from '@verdeect/auth';
 
 const verifier = createVerifier({
   issuers: [
@@ -18,7 +37,14 @@ const verifier = createVerifier({
   clockToleranceSec: 30,
 });
 
-const principal = await verifier.verify(jwt); // Principal или VerifyError
+try {
+  const principal = await verifier.verify(jwt);
+} catch (error) {
+  if (error instanceof VerifyError) {
+    // токен отклонён: error.rule, error.reason
+  }
+  throw error;
+}
 ```
 
 | Параметр            | Значение                                                                                                      |
@@ -29,7 +55,60 @@ const principal = await verifier.verify(jwt); // Principal или VerifyError
 | `resource`          | `aud` токена обязан его содержать                                                                             |
 | `clockToleranceSec` | допуск часов для `exp`/`iat`, по умолчанию 30                                                                 |
 
-Пустой список издателей, пустой `resource` или повтор `iss` — исключение при создании.
+Пустой список издателей, пустой `resource` или повтор `iss` — исключение с префиксом `verdeect-auth:` при создании.
+
+### С NestJS
+
+Модуль регистрируется **один раз в корневом модуле** и по умолчанию глобальный: один verifier и один кэш JWKS на приложение.
+
+```ts
+import { Controller, Module, Post, UseGuards } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { RequireScope, VerdeectAuthGuard, VerdeectAuthModule } from '@verdeect/auth/nest';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot(),
+    VerdeectAuthModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        issuers: [
+          {
+            iss: config.getOrThrow('AUTH_IDENTITY_ISS'),
+            jwksUri: config.getOrThrow('AUTH_IDENTITY_JWKS_URI'),
+          },
+        ],
+        resource: config.getOrThrow('AUTH_RESOURCE'),
+      }),
+    }),
+    OrganizationsModule,
+  ],
+})
+class AppModule {}
+
+@Controller('api/organizations')
+@UseGuards(VerdeectAuthGuard)
+class CreateOrganizationController {
+  @Post()
+  @RequireScope('identity:organizations.manage')
+  handle() {}
+}
+```
+
+Guard на каждом маршруте без `@UseGuards` — через `APP_GUARD` (тогда все маршруты без токена получают 401):
+
+```ts
+import { APP_GUARD } from '@nestjs/core';
+
+@Module({
+    imports: [VerdeectAuthModule.forRoot({ issuers: […], resource: 'https://api.verdeect.ru' })],
+    providers: [{ provide: APP_GUARD, useExisting: VerdeectAuthGuard }],
+})
+class AppModule {}
+```
+
+Пошагово — [docs/getting-started.md](docs/getting-started.md), подробности модуля — [docs/nestjs.md](docs/nestjs.md).
 
 ## Правила V-1…V-8
 
@@ -44,7 +123,7 @@ const principal = await verifier.verify(jwt); // Principal или VerifyError
 | V-7     | агент: обязательны `sub`, `tenant`, `tenant_id`, `asid`, `prof`, `pep` (целое); `wid` — строка или `null`                                  | `agent_claim_missing`, `pep_not_integer`                               |
 | V-8     | `tenant` ⇔ `tenant_id`: оба заданы или оба отсутствуют                                                                                     | `tenant_pair_broken`                                                   |
 
-Отказ — `VerifyError` с полями `rule` (`V-1`…`V-8`) и `reason`. Сбой загрузки JWKS (сеть, таймаут, не-JSON) — **не** `VerifyError`: исходная ошибка пробрасывается, приложение отвечает 500, а не выбрасывает пользователей 401.
+Отказ — `VerifyError` с полями `rule` (`V-1`…`V-8`) и `reason`. Сбой загрузки JWKS (сеть, таймаут, не-JSON) — **не** `VerifyError`: исходная ошибка пробрасывается, приложение отвечает 500, а не выбрасывает пользователей 401. Подробнее — [docs/errors.md](docs/errors.md).
 
 ## `Principal`
 
@@ -58,56 +137,11 @@ const principal = await verifier.verify(jwt); // Principal или VerifyError
 
 ## NestJS
 
-Модуль регистрируется **один раз в корневом модуле** и по умолчанию глобальный: один verifier и один кэш JWKS на приложение — окно V-3 (перечитывание ≤ раз в 60 с) действует на всё приложение, а функциональным модулям импортировать его не нужно.
-
-```ts
-import { Controller, Module, Post, UseGuards } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { RequireScope, VerdeectAuthGuard, VerdeectAuthModule } from 'verdeect-auth/nest';
-
-// Корень: регистрация verifier'а
-@Module({
-    imports: [
-        ConfigModule.forRoot(),
-        VerdeectAuthModule.forRootAsync({
-            inject: [ConfigService],
-            useFactory: (config: ConfigService) => ({ issuers: …, resource: 'https://api.verdeect.ru' }),
-        }),
-        OrganizationsModule,
-    ],
-})
-class AppModule {}
-
-// Функциональный модуль: VerdeectAuthModule не импортируется
-@Controller('api/organizations')
-@UseGuards(VerdeectAuthGuard)
-class CreateOrganizationController {
-    @Post()
-    @RequireScope('identity:organizations.manage')
-    handle() {}
-}
-
-@Module({ controllers: [CreateOrganizationController] })
-class OrganizationsModule {}
-```
-
-Вариант с `APP_GUARD` — guard на каждом маршруте приложения без `@UseGuards` (маршруты без токена тогда получают 401, подходит, когда всё приложение — сервер ресурсов):
-
-```ts
-import { APP_GUARD } from '@nestjs/core';
-
-@Module({
-    imports: [VerdeectAuthModule.forRoot({ issuers: […], resource: 'https://api.verdeect.ru' })],
-    providers: [{ provide: APP_GUARD, useExisting: VerdeectAuthGuard }],
-})
-class AppModule {}
-```
-
-- `VerdeectAuthModule.forRoot(options, {isGlobal?})` / `forRootAsync({imports, inject, useFactory, isGlobal?})` регистрирует verifier под токеном `VERDEECT_VERIFIER` и `VerdeectAuthGuard`. `isGlobal` по умолчанию `true`; `false` — только для изоляции, тогда модуль импортируется туда, где стоит `@UseGuards`, и у каждого импорта свой кэш JWKS.
+- `VerdeectAuthModule.forRoot(options, {isGlobal?})` / `forRootAsync({imports, inject, useFactory, isGlobal?})` регистрирует verifier под токеном `VERDEECT_VERIFIER` и `VerdeectAuthGuard`. `isGlobal` по умолчанию `true`; `false` — только для изоляции, тогда у каждого импорта свой кэш JWKS.
 - Guard кладёт `Principal` в `request.principal`; читать — `principalOf(request)`.
 - Декораторы применимы к методу и классу; метод перекрывает класс. `@RequireScope()` без областей — ошибка при объявлении; `@RequireUser()` вместе с `@RequireService()` на маршруте — ошибка конфигурации (500).
 
-Порядок проверок и ответы (`{error: {code, message, details}}`, `01` §8):
+Порядок проверок и ответы (`{error: {code, message, details}}` по соглашению об ответах API Вердикта):
 
 | Шаг | Условие                                            | Ответ                                                  |
 | --- | -------------------------------------------------- | ------------------------------------------------------ |
@@ -117,56 +151,75 @@ class AppModule {}
 | 3   | `@RequireTenant()` — нет `tenant` (service всегда) | 409 `TENANT_REQUIRED`                                  |
 | 4   | `@RequireScope(...)` — нет хотя бы одной области   | 403 `SCOPE_REQUIRED`, `details.required` — недостающие |
 
-Логи guard'а (`Logger` Nest, контекст `VerdeectAuthGuard`): WARN — отказ проверки (`rule`, `reason`, `iss`, `kid`), истёкший токен — DEBUG; решения декораторов — DEBUG. Токен, заголовок `Authorization`, email и имена не пишутся.
+## Логи
 
-## Тесты потребителей: `verdeect-auth/testing`
+Логирует только guard — через `Logger` Nest с контекстом `VerdeectAuthGuard`:
+
+- WARN — отказ проверки токена: `rule`, `reason`, `iss`, `kid`;
+- DEBUG — истёкший токен, запрос без токена, решения декораторов (`kind`, `sub`, `clientId`).
+
+Токен, заголовок `Authorization`, email и имена не пишутся; `iss` и `kid` обрезаются до 256 символов. Ядро и `testing` не логируют.
+
+## Тесты
+
+Подпуть `@verdeect/auth/testing` — для тестов сервиса без Identity:
 
 ```ts
-import { createTestSigner, TEST_RESOURCE, tokenVectors } from 'verdeect-auth/testing';
+import { createVerifier } from '@verdeect/auth';
+import { createTestSigner, TEST_RESOURCE, tokenVectors } from '@verdeect/auth/testing';
 
 const identity = await createTestSigner(); // iss https://id.verdeect.ru, kinds user, service
-const issuer = identity.issuer; // TrustedIssuer с jwksUri локального сервера
+const verifier = createVerifier({ issuers: [identity.issuer], resource: TEST_RESOURCE });
 const token = await identity.userToken({ tenant: 'acme', tenant_id: 'org_acme' });
 await identity.close();
 ```
 
-| Метод                                           | Назначение                                                                               |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `userToken` / `serviceToken` / `agentToken`     | образцы prd.md §7.1, §7.2, `01` §5.4; claim'ы переопределяются, `undefined` убирает поле |
-| `sign(claims, header?)`                         | произвольный набор, заголовок по умолчанию `at+jwt` / `EdDSA` / текущий `kid`            |
-| `rotate()`                                      | новый ключ — текущий и опубликован в JWKS                                                |
-| `signWithUnpublishedKey` / `signWithForeignKey` | неизвестный `kid` (V-3) / чужая подпись с тем же `kid` (V-2)                             |
-| `forge(header, claims)`                         | произвольный `alg` и заведомо неверная подпись                                           |
-| `jwksRequests()`                                | число запросов к JWKS                                                                    |
-
-`tokenVectors` — векторы V-1…V-8 (`id`, `rule`, `title`, `token(signers)`, `expect`) для подписчиков Identity и Orchestrator (`kinds: ['agent']`).
+Код подпути грузится только с условием `development`: Vitest ставит его по умолчанию, в Node — `node --conditions=development`. В production импорт падает с `ERR_PACKAGE_PATH_NOT_EXPORTED`, поэтому тестовый подписчик туда не попадёт. Методы подписчика и векторы V-1…V-8 — [docs/testing.md](docs/testing.md).
 
 ## Чего библиотека не делает
 
-- Ролей и прав не знает: права — Platform `authz/check` в сервисе после guard'ов (D9).
-- Актуальность `pep` агента не проверяет — это делает сервис (`01` §6.4).
+- Ролей и прав не знает: права — Platform `authz/check` в сервисе после guard'ов.
+- Актуальность `pep` агента не проверяет — это делает сервис.
+- Токены не выпускает и не обменивает.
 
-## Сборка
+## API
 
-`build` — `tsc -p tsconfig.build.json` → `dist/` (JS и `.d.ts`, без тестов). Условные `exports` у `.`, `./nest`, `./testing`:
+| Подпуть                  | Значения                                                                                                                                        | Типы                                                                                                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@verdeect/auth`         | `createVerifier`, `VerifyError`                                                                                                                 | `TokenKind`, `TrustedIssuer`, `VerifierOptions`, `UserPrincipal`, `ServicePrincipal`, `AgentPrincipal`, `Principal`, `Verifier`, `VerifyReason`, `VerifyRule` |
+| `@verdeect/auth/nest`    | `VerdeectAuthModule`, `VerdeectAuthGuard`, `VERDEECT_VERIFIER`, `RequireTenant`, `RequireScope`, `RequireUser`, `RequireService`, `principalOf` | `PrincipalCarrier`, `VerdeectAuthModuleOptions`, `VerdeectAuthAsyncOptions`                                                                                   |
+| `@verdeect/auth/testing` | `createTestSigner`, `tokenVectors`, `TEST_IDENTITY_ISS`, `TEST_ORCHESTRATOR_ISS`, `TEST_RESOURCE`                                               | `Claims`, `Header`, `TestSigner`, `TestSignerOptions`, `TokenVector`, `VectorExpectation`, `VectorSigners`                                                    |
 
-| Условие       | Куда ведёт         | Кто использует                                                             |
-| ------------- | ------------------ | -------------------------------------------------------------------------- |
-| `types`       | `src/**/index.ts`  | `tsc` и редактор в workspace                                               |
-| `development` | `src/**/index.ts`  | Vitest (условие Vite по умолчанию) — тесты без сборки пакета               |
-| `default`     | `dist/**/index.js` | Node: Identity в образе и в стеке разработки (`pnpm build` собирает пакет) |
+У каждого экспорта есть TSDoc — описание видно в подсказках редактора.
 
-`apps/identity` `build` собирает пакет первым; образ Identity копирует `package.json` и `dist` пакета.
+## Документация
+
+- [docs/getting-started.md](docs/getting-started.md) — подключение к новому сервису NestJS
+- [docs/nestjs.md](docs/nestjs.md) — модуль, guard, декораторы, маршруты без токена
+- [docs/testing.md](docs/testing.md) — `createTestSigner`, векторы, условие `development`
+- [docs/errors.md](docs/errors.md) — `VerifyError`, ответы клиенту, логи, сбой JWKS
+- [docs/releasing.md](docs/releasing.md) — выпуск версии (для мейнтейнеров)
+- [CHANGELOG.md](CHANGELOG.md) — изменения по версиям
+
+## Версионирование
+
+[Semver](https://semver.org/lang/ru/). Мажорная версия — при любом ломающем изменении контракта:
+
+- правило V-1…V-8 или код `reason`;
+- поле `Principal`;
+- код или статус ответа guard'а;
+- сигнатура или удаление экспорта;
+- поднятие минимальной версии Node или NestJS.
+
+Пинайте версию точно (`--save-exact`) и обновляйтесь по [CHANGELOG.md](CHANGELOG.md): у мажорной версии там есть раздел «Как обновиться».
 
 ## Разработка
 
 ```bash
-corepack pnpm --filter verdeect-auth test       # unit-тесты уровня L
-corepack pnpm --filter verdeect-auth typecheck
-corepack pnpm --filter verdeect-auth build      # dist/
+make help   # список целей
+make ci     # lint analyse test build pack-check — то же, что в CI
 ```
 
-## See Also
+## Лицензия
 
-- [Разработка](#разработка) — тесты, Makefile
-- PRD Identity §7.5 (репозиторий verdeect-identity) — требования к библиотеке
+`UNLICENSED` — все права защищены: код открыт для чтения, но не передаётся по лицензии.
