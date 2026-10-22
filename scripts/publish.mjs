@@ -1,4 +1,4 @@
-// Публикация @verdeect/auth из CI по тегу v<semver> (prd.md FR-11, UC-3 err-1/err-2, AC-8; docs/releasing.md).
+// Публикация @verdeect/auth из CI по тегу v<semver> (prd.md r4: FR-11, UC-3 err-1/err-2, AC-8, D-8; docs/releasing.md).
 // generic: скрипт выпуска, только stdlib. До npm publish сверяет тег с version и проверяет, что версии нет в npm;
 // при любой неопределённости падает и ничего не публикует. Флаг --dry-run передаётся в npm publish.
 import { spawnSync } from 'node:child_process';
@@ -70,6 +70,11 @@ if (isPublished(name, version)) {
 
 const publishArgs = ['publish', '--access', 'public', ...(dryRun ? ['--dry-run'] : [])];
 log(`решение: публикуем ${name}@${version}`);
+// Токен не обязателен: npm сначала пробует OIDC (Trusted Publishing, id-token: write), затем NODE_AUTH_TOKEN.
+// Значение токена не печатается — только наличие.
+log(
+    `авторизация: OIDC, запасной NODE_AUTH_TOKEN ${process.env.NODE_AUTH_TOKEN ? 'задан' : 'не задан'}`,
+);
 log(`npm ${publishArgs.join(' ')}`);
 const result = spawnSync('npm', publishArgs, { cwd: ROOT, stdio: 'inherit' });
 log(`npm ${publishArgs.join(' ')} завершился с кодом ${result.status}`);

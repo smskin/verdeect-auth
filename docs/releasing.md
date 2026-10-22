@@ -18,7 +18,7 @@
    git push origin vX.Y.Z
    ```
 
-5. **CI** прогоняет `lint` → `test` (Node 22 и 24) → `build` (`make build pack-check`) → `publish`. Job `publish` запускается только на тег `v<major>.<minor>.<patch>` и только после зелёных проверок.
+5. **CI** прогоняет `lint` → `test` (Node 22 и 24) → `build` (`make build pack-check`) → `publish` (Node 24, npm ≥ 11.15, Trusted Publishing — см. ниже). Job `publish` запускается только на тег `v<major>.<minor>.<patch>` и только после зелёных проверок.
 6. **Проверить публикацию:**
 
    ```bash
@@ -63,20 +63,47 @@
 
 Мажорная версия (UC-3 alt-1): в разделе версии CHANGELOG обязателен подраздел `### Как обновиться` — что изменилось и что сделать потребителю.
 
-## Переменные CI
+## Авторизация в npm: Trusted Publishing
 
-Разовая настройка репозитория GitHub:
+Пакет публикуется через npm Trusted Publishing (OIDC): job `publish` получает от GitHub короткоживущий `id-token` (`permissions: id-token: write`) и обменивает его в npm на токен публикации. Долгоживущего токена в репозитории нет. Требования: GitHub-hosted runner, npm ≥ 11.15 (job ставит его сам: `npm install -g npm@^11.15.0`), environment `npm`.
 
-| Что                | Где                         | Значение                                                           |
-| ------------------ | --------------------------- | ------------------------------------------------------------------ |
-| environment `npm`  | Settings → Environments     | правило развёртывания: только теги `v*`                            |
-| секрет `NPM_TOKEN` | environment `npm` → Secrets | automation token npmjs.com с правом публикации в scope `@verdeect` |
-| ruleset тегов `v*` | Settings → Rules → Rulesets | создание — только мейнтейнеры; удаление и перезапись запрещены     |
+npm сначала пробует OIDC и только потом `NODE_AUTH_TOKEN`. Workflow передаёт `NODE_AUTH_TOKEN` из секрета `NPM_TOKEN`, но не требует его: пустое значение — норма.
 
-Секреты GitHub маскирует в логах, скрипт публикации токен не печатает.
+### Разовая настройка GitHub
+
+| Что                | Где                         | Значение                                                       |
+| ------------------ | --------------------------- | -------------------------------------------------------------- |
+| environment `npm`  | Settings → Environments     | правило развёртывания: только теги `v*`                        |
+| ruleset тегов `v*` | Settings → Rules → Rulesets | создание — только мейнтейнеры; удаление и перезапись запрещены |
+
+### Первый выпуск (1.0.0) — с временным токеном
+
+Trusted Publisher настраивается только для пакета, который уже есть в npm, поэтому 1.0.0 публикуется токеном:
+
+1. На npmjs.com создать granular access token: право публикации только в scope `@verdeect`, срок действия не больше 1 дня (D-8).
+2. Положить его в секрет `NPM_TOKEN` environment `npm` (Settings → Environments → `npm` → Secrets).
+3. Выпустить 1.0.0 по шагам UC-3 выше.
+
+### После первого выпуска — переход на OIDC
+
+1. Связать пакет с workflow (нужны npm ≥ 11.15, 2FA на аккаунте и право записи в пакет):
+
+   ```bash
+   npm trust github @verdeect/auth --repo smskin/verdeect-auth --file ci.yml --env npm --allow-publish
+   ```
+
+   Параметры доверия: репозиторий `smskin/verdeect-auth`, файл workflow `ci.yml`, environment `npm`, разрешение `--allow-publish`. Имена флагов сверьте с `npm trust github --help` — их задаёт npm CLI. То же можно сделать на странице пакета: Settings → Trusted Publisher.
+
+2. Запретить публикацию токенами: страница пакета → Settings → Publishing access → «Require two-factor authentication and disallow tokens».
+3. Удалить секрет `NPM_TOKEN` из environment `npm` и отозвать токен на npmjs.com.
+4. Следующий выпуск идёт через OIDC; в логе `[publish]` будет «запасной NODE_AUTH_TOKEN не задан».
+
+Если Trusted Publisher не совпадает с запуском (другой репозиторий, файл workflow или environment), `npm publish` падает с E404 — проверьте параметры из шага 1.
+
+Секреты GitHub маскирует в логах, скрипт публикации токен не печатает — только факт его наличия.
 
 ## Где смотреть логи публикации
 
-Actions → запуск для тега → job `publish` → шаг `publish`. Строки с префиксом `[publish]`: тег, `version`, результат `npm view`, решение и команда `npm publish`. Причина падения — последняя строка `[publish]` в stderr.
+Actions → запуск для тега → job `publish` → шаг `publish`. Строки с префиксом `[publish]`: тег, `version`, результат `npm view`, решение, способ авторизации и команда `npm publish`. Причина падения — последняя строка `[publish]` в stderr.
 
 См. также [CHANGELOG.md](../CHANGELOG.md).

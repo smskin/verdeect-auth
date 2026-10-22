@@ -1,6 +1,6 @@
 # PRD: `@verdeect/auth` — библиотека проверки токенов Вердикта 2.0
 
-> Пакет: requirements/0000-verdeect-auth/ · Ревизия: r3 · Дата: 2026-10-22 · Источник: обсуждение в Claude (чат Identity)
+> Пакет: requirements/0000-verdeect-auth/ · Ревизия: r4 · Дата: 2026-10-22 · Источник: обсуждение в Claude (чат Identity)
 > Тип: новая библиотека (вынос существующего кода) · Изменяет: — · UI: нет
 
 Контракт проверки токена (правила V-1…V-8, `Principal`, guard'ы, ответы) уже определён и реализован в Identity: `verdeect-identity/requirements/0000-identity-server/prd.md` §7.5, AC-7.1–7.4. Этот PRD **не меняет поведение** библиотеки. Он описывает, как она становится отдельным npm-пакетом: упаковка, документация, выпуск. Основание — решение 21 `01-architecture-and-contracts.md`: общие пакеты публикуются в npm, scope `@verdeect` на npmjs.com, один репозиторий на пакет, semver, публикация из CI по тегу, потребители пинят версию точно.
@@ -36,7 +36,7 @@
 | UC-3 выпустить версию | ❌ | ✅ (тег) | ✅ публикует |
 | UC-4 запуск сервиса в production | — | — | — (Node без условия `development`) |
 
-Публиковать может только job `publish` GitHub Actions на теге `v*`, защищённом ruleset'ом репозитория; токен `NPM_TOKEN` — секрет environment `npm` (доступен только этому job). Ручная публикация с машины разработчика — не способ выпуска.
+Публиковать может только job `publish` GitHub Actions на теге `v*`, защищённом ruleset'ом репозитория, через npm Trusted Publishing (OIDC, без долгоживущего токена; D-8). Единственное исключение — первый выпуск 1.0.0 (D-8). Ручная публикация с машины разработчика — не способ выпуска.
 
 ## 4. Use cases
 
@@ -81,7 +81,7 @@
 - **FR-8 (UC-1, UC-2, UC-4).** Проверка потребителя: тест собирает архив (`pnpm pack`), устанавливает его во временный проект вне репозитория (`tests/consumer/` как шаблон) и проверяет AC-1, AC-2, AC-3, AC-7.
 - **FR-9 (UC-1, UC-2).** Документация (раздел 9).
 - **FR-10 (UC-3).** Makefile — единая точка входа: `install`, `lint`, `analyse` (typecheck), `test`, `build`, `pack-check`, `ci` (= `lint analyse test build pack-check`), `clean`. Docker-целей нет.
-- **FR-11 (UC-3).** GitHub Actions (`.github/workflows/ci.yml`): jobs `lint` → `test` (матрица Node) → `build` → `publish`. Проверки — на каждый push и pull request. `publish` — только на тег `v<semver>` (ruleset тегов), environment `npm` с секретом `NPM_TOKEN`; до публикации сверяет тег с `version` и проверяет, что версии нет в npm; `npm publish --access public` из собранного `dist`. Без `allow_failure`.
+- **FR-11 (UC-3).** GitHub Actions (`.github/workflows/ci.yml`): jobs `lint` → `test` (матрица Node) → `build` → `publish`. Проверки — на каждый push и pull request. `publish` — только на тег `v<semver>` (ruleset тегов), environment `npm`, `permissions: id-token: write` только у этого job, npm CLI ≥ 11.15 на GitHub-hosted runner; публикация через Trusted Publishing (OIDC); для первого выпуска workflow принимает и `NODE_AUTH_TOKEN` из секрета `NPM_TOKEN` environment `npm`, если он задан (D-8); до публикации сверяет тег с `version` и проверяет, что версии нет в npm; `npm publish --access public` из собранного `dist`. Без `allow_failure`.
 - **FR-12 (UC-3).** `CHANGELOG.md` в формате Keep a Changelog; версия 1.0.0 — «вынос из `verdeect-identity` без изменения поведения, новое имя `@verdeect/auth`, подпуть `testing` закрыт для production». Порядок выпуска — `docs/releasing.md`.
 
 ## 6. Бизнес-правила и ограничения
@@ -116,7 +116,7 @@
 | `docs/nestjs.md` | модуль, `isGlobal`, guard на контроллере и через `APP_GUARD`, сочетания декораторов и ошибки конфигурации, чтение `Principal`, маршруты без токена |
 | `docs/testing.md` | `createTestSigner` (все методы), векторы V-1…V-8 в тестах сервиса, условие `development` (Vitest — по умолчанию; Node — `--conditions=development`; почему `testing` недоступен в production) |
 | `docs/errors.md` | `VerifyError`: `rule`, `reason`, что видит клиент (401 без причины) и что пишется в лог; сбой JWKS → 500, не 401 |
-| `docs/releasing.md` | UC-3 по шагам, semver (BR-1), CHANGELOG, настройка GitHub: environment `npm`, секрет `NPM_TOKEN`, ruleset тегов |
+| `docs/releasing.md` | UC-3 по шагам, semver (BR-1), CHANGELOG, настройка GitHub (environment `npm`, ruleset тегов) и npm (trusted publisher `smskin/verdeect-auth`, workflow `ci.yml`, environment `npm`; `npm trust github …`); первый выпуск с временным токеном и переход на OIDC по шагам; после перехода — запрет токенов публикации у пакета |
 | `CHANGELOG.md` | FR-12 |
 | TSDoc | у каждого публичного экспорта (функции, классы, декораторы, типы и их поля): назначение, параметры, исключения, пример для основных — видно в подсказках IDE через `.d.ts` |
 | `AGENTS.md` | карта репозитория для агентов (как в Identity) |
@@ -143,7 +143,7 @@
 - **D-4.** `[ASSUMPTION]` Лицензия `UNLICENSED` (все права защищены, код виден, но не передаётся по лицензии). Если нужна открытая (MIT) — правка `package.json` и файл `LICENSE` до выпуска.
 - **D-5.** Документация на русском, как все документы проекта. Идентификаторы и код — на английском.
 - **D-7.** Минимальная версия Node — 22.12 (r2). Node 20 вышел из поддержки 30.04.2026, закреплённый vitest 5 требует Node ≥ 22.12, Identity работает на Node 24; поднять минимум после выпуска 1.0.0 было бы ломающим изменением (BR-1), до выпуска — бесплатно. Отвергнуты: проверки на Node 20 без vitest (поддержка версии, которая уже не поддерживается) и откат vitest.
-- **D-8.** Репозиторий и CI — GitHub (`smskin/verdeect-auth`, GitHub Actions), а не GitLab, как остальные репозитории 2.0 (r3): пакет публичный, на GitHub доступны npm provenance и Trusted Publishing (OIDC) без долгоживущего токена. 1.0.0 публикуется с `NPM_TOKEN`; переход на Trusted Publishing — после первого выпуска (настраивается на странице уже существующего пакета), отдельной правкой.
+- **D-8.** Репозиторий и CI — GitHub (`smskin/verdeect-auth`, GitHub Actions), а не GitLab, как остальные репозитории 2.0 (r3). Публикация — npm Trusted Publishing (OIDC) из job `publish` `ci.yml`, environment `npm` (r4): долгоживущего токена нет, provenance — автоматически (публичный пакет из публичного репозитория). Trusted publisher настраивается только у пакета, который уже есть в npm, поэтому 1.0.0 публикует тот же workflow с временным granular-токеном `NPM_TOKEN` (только scope `@verdeect`, срок ≤ 1 дня); сразу после выпуска — `npm trust github`, удаление секрета и отзыв токена, в настройках пакета — «require 2FA and disallow tokens». Отвергнуто: первый выпуск вручную с машины разработчика (сборка не из CI, без provenance).
 - **D-6.** `testing` закрыт условием `development` без `default`, но с `types` вне условия. Отвергнуты: отдельный пакет `@verdeect/auth-testing` (лишний выпуск на каждое изменение), `testing` в `default` (тестовый подписчик доступен в production).
 
 ## 13. Открытые вопросы
@@ -159,7 +159,7 @@
 - **AC-5 (FR-7).** `publint` — 0 ошибок; `attw --pack --profile esm-only` — 0 проблем.
 - **AC-6 (FR-5).** Все перенесённые тесты зелёные, в их именах остались AC-7.1–7.4; число тестов не меньше, чем в `verdeect-identity/packages/verdeect-auth` на момент выноса (3 spec-файла: `verifier.spec.ts`, `verifier.jwks.spec.ts`, `nest/verdeect-auth.guard.spec.ts`).
 - **AC-7 (UC-2, FR-8).** В проекте-потребителе тест Vitest импортирует `@verdeect/auth/testing`, поднимает `createTestSigner`, проверяет `userToken` через `createVerifier` из `@verdeect/auth` и проходит без дополнительной настройки условий.
-- **AC-8 (UC-3, FR-11).** CI: push в ветку — нет job `publish`; тег `v1.0.0` при `version` `1.0.0` — `publish` выполняется после зелёных проверок; тег `v1.0.1` при `version` `1.0.0` — `publish` падает до `npm publish` с сообщением о несовпадении; версия уже в npm — падает до `npm publish`. Проверяется сухим прогоном скрипта публикации (`--dry-run`) в тесте и разбором `.github/workflows/ci.yml`.
+- **AC-8 (UC-3, FR-11).** CI: push в ветку — нет job `publish`; тег `v1.0.0` при `version` `1.0.0` — `publish` выполняется после зелёных проверок, у job `publish` (и только у него) `id-token: write`, npm CLI ≥ 11.15; тег `v1.0.1` при `version` `1.0.0` — `publish` падает до `npm publish` с сообщением о несовпадении; версия уже в npm — падает до `npm publish`. Проверяется сухим прогоном скрипта публикации (`--dry-run`) в тесте и разбором `.github/workflows/ci.yml`.
 - **AC-9 (FR-9, §8).** Тест сверяет список экспортов трёх подпутей с таблицей §8 (новый экспорт без записи в README и CHANGELOG — падение). `make lint` требует TSDoc у каждого публичного экспорта (`eslint-plugin-jsdoc` или аналог на TypeScript).
 - **AC-10 (FR-9).** Тест проверяет Markdown-файлы репозитория: относительные ссылки ведут на существующие файлы, ссылок `../../` нет; в README есть разделы: установка, быстрый старт, правила V-1…V-8, `Principal`, NestJS, тесты, версионирование.
 - **AC-11 (FR-10, FR-12).** `make ci` выполняет `lint analyse test build pack-check` и зелёный; в `CHANGELOG.md` есть раздел `1.0.0`; `docs/releasing.md` описывает UC-3.

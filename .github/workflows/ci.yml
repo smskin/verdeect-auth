@@ -1,15 +1,16 @@
-# CI и выпуск @verdeect/auth (prd.md r3: FR-11, UC-3, AC-8, §11, D-7, D-8 — GitHub Actions).
+# CI и выпуск @verdeect/auth (prd.md r4: FR-11, UC-3, AC-8, §11, D-7, D-8 — GitHub Actions, npm Trusted Publishing).
 #
 # Jobs FR-11, связанные через needs: lint → test → build → publish; каждый ставит зависимости сам (make install).
-# Проверки — на каждый push в ветку и pull_request. test — матрица Node 22 и 24; остальные jobs — Node 22
-# (минимальная поддерживаемая версия, engines.node ">=22.12").
-# publish — только на тег v<major>.<minor>.<patch> после зелёных проверок: scripts/publish.mjs сверяет тег
-# с version, проверяет, что версии нет в npm, и запускает npm publish --access public из собранного dist/.
+# Проверки — на каждый push в ветку и pull_request. test — матрица Node 22 и 24; lint и build — Node 22
+# (минимальная поддерживаемая версия, engines.node ">=22.12"); publish — Node 24 и npm >= 11.15 (Trusted Publishing).
+# publish — только на тег v<major>.<minor>.<patch> после зелёных проверок, GitHub-hosted runner: scripts/publish.mjs
+# сверяет тег с version, проверяет, что версии нет в npm, и запускает npm publish --access public из собранного dist/.
 #
-# Разовая настройка репозитория (docs/releasing.md):
+# Разовая настройка (docs/releasing.md):
 #   - environment `npm` с правилом развёртывания «только теги v*»;
-#   - секрет NPM_TOKEN (automation token npmjs.com, scope @verdeect) в environment `npm` — GitHub маскирует его в логах;
-#   - ruleset на теги v*: создание — только мейнтейнеры, удаление и перезапись запрещены.
+#   - ruleset на теги v*: создание — только мейнтейнеры, удаление и перезапись запрещены;
+#   - первый выпуск: временный секрет NPM_TOKEN в environment `npm` (пакета ещё нет в npm);
+#   - затем npm trust github (репозиторий, ci.yml, environment npm), запрет публикации токенами, секрет удаляется.
 # continue-on-error нигде не используется.
 name: ci
 
@@ -87,7 +88,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: npm
-    # Права job заменяют права workflow целиком: contents — для checkout, id-token — для provenance npm.
+    # Права job заменяют права workflow целиком: contents — для checkout, id-token — для npm Trusted Publishing (OIDC).
     permissions:
       contents: read
       id-token: write
@@ -95,13 +96,20 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
+      # Trusted Publishing и npm trust требуют npm >= 11.15; npm из Node 24 может быть старее.
+      - name: npm >= 11.15
+        run: npm install -g npm@^11.15.0
+      - name: npm version
+        run: npm --version
       - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
+      # npm сначала пробует OIDC (Trusted Publishing), затем NODE_AUTH_TOKEN. Секрет NPM_TOKEN нужен только
+      # для первого выпуска 1.0.0 (пакета ещё нет в npm); после `npm trust github` его удаляют, пустое значение — норма.
       - name: publish
         run: node scripts/publish.mjs
         env:

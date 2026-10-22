@@ -1,4 +1,4 @@
-// Выпуск версии (prd.md r3: UC-3 main, alt-1, err-1, err-2; AC-8, AC-11; FR-10, FR-11, FR-12; BR-1; D-7, D-8).
+// Выпуск версии (prd.md r4: UC-3 main, alt-1, err-1, err-2; AC-8, AC-11; FR-10, FR-11, FR-12; BR-1; D-7, D-8).
 // Сухой прогон scripts/publish.mjs против локального реестра на node:http — без сети и без публикации.
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
@@ -24,6 +24,7 @@ interface WorkflowJob {
     readonly if?: string;
     readonly environment?: string;
     readonly permissions?: Record<string, string>;
+    readonly 'runs-on'?: string;
     readonly strategy?: { readonly matrix?: { readonly node?: readonly number[] } };
     readonly steps: readonly WorkflowStep[];
     readonly 'continue-on-error'?: unknown;
@@ -110,6 +111,8 @@ describe('UC-3: выпуск версии', () => {
             GITHUB_REF_NAME: tag,
             npm_config_registry: registryUrl,
             npm_config_userconfig: join(configDir, '.npmrc'),
+            // Как после удаления секрета NPM_TOKEN: скрипт не требует токена (D-8, Trusted Publishing).
+            NODE_AUTH_TOKEN: '',
         });
     }
 
@@ -124,7 +127,7 @@ describe('UC-3: выпуск версии', () => {
         }
     });
 
-    it('AC-8: publish нуждается во всех проверках (lint, test, build), без continue-on-error, environment npm, NODE_AUTH_TOKEN из secrets.NPM_TOKEN, permissions contents read и id-token write только у publish', () => {
+    it('AC-8: publish нуждается во всех проверках (lint, test, build), без continue-on-error, environment npm, GitHub-hosted runner, Node 24 и npm >= 11.15, NODE_AUTH_TOKEN из secrets.NPM_TOKEN необязателен, permissions contents read и id-token write только у publish (D-8, Trusted Publishing)', () => {
         expect(needsOf(workflow.jobs['publish']).sort()).toEqual(['build', 'lint', 'test']);
         expect(needsOf(workflow.jobs['build'])).toEqual(['test']);
         expect(needsOf(workflow.jobs['test'])).toEqual(['lint']);
@@ -132,8 +135,20 @@ describe('UC-3: выпуск версии', () => {
 
         const publish = workflow.jobs['publish'];
         expect(publish?.environment).toBe('npm');
+        // Trusted Publishing работает только на GitHub-hosted runner.
+        expect(publish?.['runs-on']).toMatch(/^(ubuntu|windows|macos)-/);
 
-        // Минимальные права: workflow — только чтение; id-token (provenance npm) — только у publish.
+        // npm >= 11.15 ставится до шага публикации: npm из Node 24 может быть старее.
+        const steps = publish?.steps ?? [];
+        const upgrade = steps.findIndex((step) => step.run === 'npm install -g npm@^11.15.0');
+        const publishIndex = steps.findIndex((step) => step.run === 'node scripts/publish.mjs');
+        expect(upgrade, 'npm upgrade step').toBeGreaterThanOrEqual(0);
+        expect(upgrade).toBeLessThan(publishIndex);
+        const setupNode = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
+        expect(setupNode?.with?.['node-version']).toBe(24);
+        expect(setupNode?.with?.['registry-url']).toBe('https://registry.npmjs.org');
+
+        // Минимальные права: workflow — только чтение; id-token (OIDC Trusted Publishing) — только у publish.
         expect(workflow.permissions).toEqual({ contents: 'read' });
         expect(publish?.permissions).toEqual({ contents: 'read', 'id-token': 'write' });
         const withPermissions = Object.entries(workflow.jobs)
@@ -162,7 +177,7 @@ describe('UC-3: выпуск версии', () => {
         expect(workflow.on).toHaveProperty('pull_request');
 
         expect(workflow.jobs['test']?.strategy?.matrix?.node).toEqual([22, 24]);
-        for (const name of ['lint', 'build', 'publish']) {
+        for (const name of ['lint', 'build']) {
             const setup = workflow.jobs[name]?.steps.find((step) =>
                 step.uses?.startsWith('actions/setup-node@'),
             );
@@ -176,10 +191,11 @@ describe('UC-3: выпуск версии', () => {
         expect(runs('build')).toEqual(['make install', 'make build pack-check']);
     });
 
-    it('AC-8: тег v1.0.0 при version 1.0.0 — сухой прогон доходит до npm publish --dry-run, код 0', async () => {
+    it('AC-8: тег v1.0.0 при version 1.0.0 — сухой прогон доходит до npm publish --dry-run, код 0, без NODE_AUTH_TOKEN', async () => {
         const result = await dryRun(`v${version}`, 'missing');
 
         expect(result.code, describeResult(result)).toBe(0);
+        expect(result.stdout).toContain('NODE_AUTH_TOKEN не задан');
         expect(result.stdout).toContain(`${PUBLISH_LINE} --access public --dry-run`);
     });
 
@@ -242,7 +258,7 @@ describe('UC-3: выпуск версии', () => {
         );
     });
 
-    it('AC-11: docs/releasing.md описывает UC-3 — version, CHANGELOG, тег vX.Y.Z, NPM_TOKEN, мажорная версия при ломающем изменении (BR-1)', async () => {
+    it('AC-11: docs/releasing.md описывает UC-3 — version, CHANGELOG, тег vX.Y.Z, мажорная версия при ломающем изменении (BR-1), Trusted Publishing: первый выпуск с временным NPM_TOKEN, затем npm trust github и запрет токенов (D-8)', async () => {
         const releasing = await readFile(join(REPO_ROOT, 'docs/releasing.md'), 'utf8');
 
         for (const fragment of [
@@ -250,9 +266,13 @@ describe('UC-3: выпуск версии', () => {
             '`version`',
             'CHANGELOG.md',
             'git tag vX.Y.Z',
-            'NPM_TOKEN',
             'мажорная',
             'Как обновиться',
+            'Trusted Publishing',
+            'NPM_TOKEN',
+            'npm trust github',
+            'disallow tokens',
+            'Удалить секрет `NPM_TOKEN`',
         ]) {
             expect(releasing, fragment).toContain(fragment);
         }
