@@ -1,0 +1,3 @@
+# Настройки pnpm шаблона: vitest → vite → esbuild требует build-скрипт.
+allowBuilds:
+  esbuild: true

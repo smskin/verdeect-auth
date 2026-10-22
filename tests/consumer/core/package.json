@@ -1,0 +1,8 @@
+{
+  "name": "verdeect-auth-consumer-core",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@verdeect/auth": "file:__TARBALL__"
+  }
+}
