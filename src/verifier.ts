@@ -1,4 +1,4 @@
-// createVerifier: правила V-1…V-5 (prd.md §7.5; 01 §5.3; UC-14 основной поток, A1, A2), V-6…V-8 — principal.ts.
+// createVerifier: правила V-1…V-5 (PRD Identity §7.5; 01 §5.3; UC-14 основной поток, A1, A2), V-6…V-8 — principal.ts.
 // generic: ядро библиотеки — только jose, без Nest и без логов; причина отказа — VerifyError.rule/reason.
 // Сбой загрузки JWKS (сеть, таймаут, не-JSON, не-200) — не ошибка токена: пробрасывается как есть (G3).
 import {
@@ -24,7 +24,23 @@ interface IssuerEntry {
     readonly kinds: readonly TokenKind[];
 }
 
-/** Создаёт проверяющий; неверные параметры — Error при создании (ошибка конфигурации). */
+/**
+ * Создаёт проверяющий токенов `at+jwt` по правилам V-1…V-8. Ключи издателей загружаются по `jwksUri`
+ * лениво и кэшируются; неизвестный `kid` перечитывает JWKS не чаще раза в 60 с (V-3).
+ *
+ * @param options - издатели, сервер ресурсов и допуск часов.
+ * @returns {@link Verifier} — один экземпляр на приложение, чтобы кэш JWKS был общим.
+ * @throws Error с префиксом `verdeect-auth:` — пустой `issuers`, пустой `resource` или повтор `iss`.
+ *
+ * @example
+ * ```ts
+ * const verifier = createVerifier({
+ *     issuers: [{ iss: 'https://id.verdeect.ru', jwksUri: 'https://id.verdeect.ru/oidc/jwks' }],
+ *     resource: 'https://api.verdeect.ru',
+ * });
+ * const principal = await verifier.verify(jwt);
+ * ```
+ */
 export function createVerifier(options: VerifierOptions): Verifier {
     const issuers = buildIssuers(options);
     const resource = options.resource;

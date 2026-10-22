@@ -1,6 +1,7 @@
-// Flat config пакета @verdeect/auth (.ai-factory/rules/base.md, prd.md FR-6).
+// Flat config пакета @verdeect/auth (.ai-factory/rules/base.md, prd.md FR-6, AC-9 — TSDoc публичного API).
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import jsdoc from 'eslint-plugin-jsdoc';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -41,7 +42,39 @@ export default [
         },
     },
     {
-        files: ['*.js', '*.mjs', 'tests/consumer/**/*.mjs'],
+        // AC-9: TSDoc у каждого экспорта src/ и у публичных членов экспортируемых интерфейсов и классов.
+        // Линтер не видит реэкспорт в index.ts, поэтому документируются и внутренние экспорты.
+        files: ['src/**/*.ts'],
+        ignores: ['src/**/*.spec.ts'],
+        plugins: { jsdoc },
+        rules: {
+            'jsdoc/require-jsdoc': [
+                'error',
+                {
+                    publicOnly: true,
+                    exemptEmptyConstructors: true,
+                    require: {
+                        FunctionDeclaration: true,
+                        ClassDeclaration: true,
+                        ArrowFunctionExpression: false,
+                        MethodDefinition: false,
+                    },
+                    contexts: [
+                        'TSInterfaceDeclaration',
+                        'TSTypeAliasDeclaration',
+                        // Только члены интерфейсов: поля литералов в приведениях и союзах документирует сам тип.
+                        'TSInterfaceBody > TSPropertySignature',
+                        'TSInterfaceBody > TSMethodSignature',
+                        'ExportNamedDeclaration > VariableDeclaration',
+                        'MethodDefinition:not([accessibility="private"]):not([kind="constructor"])',
+                        'TSParameterProperty:not([accessibility="private"])',
+                    ],
+                },
+            ],
+        },
+    },
+    {
+        files: ['*.js', '*.mjs', 'tests/consumer/**/*.mjs', 'scripts/**/*.mjs'],
         languageOptions: { globals: globals.node },
     },
     prettier,

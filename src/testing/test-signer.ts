@@ -1,4 +1,4 @@
-// createTestSigner (prd.md §7.5, §18 уровень L: mock JWKS; 01 §5.3; AC-7.1–7.4). generic: помощник для тестов
+// createTestSigner (PRD Identity §7.5, §18 уровень L: mock JWKS; 01 §5.3; AC-7.1–7.4). generic: помощник для тестов
 // потребителей, не тест. Ed25519-ключи живут только в памяти; JWKS отдаёт локальный HTTP-сервер на 127.0.0.1.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
@@ -6,19 +6,27 @@ import type { AddressInfo } from 'node:net';
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey, type JWK } from 'jose';
 import type { TokenKind, TrustedIssuer } from '../index.js';
 
+/** `iss` подписчика по умолчанию — Identity (kinds `user`, `service`). */
 export const TEST_IDENTITY_ISS = 'https://id.verdeect.ru';
+/** `iss` подписчика Orchestrator для векторов агента (kinds `agent`). */
 export const TEST_ORCHESTRATOR_ISS = 'https://orchestrator.verdeect.internal';
+/** Сервер ресурсов (`aud`) токенов подписчика и векторов. */
 export const TEST_RESOURCE = 'https://api.verdeect.ru';
 
-/** Claim'ы и заголовок: значение undefined убирает поле из результата. */
+/** Claim'ы токена: значение undefined убирает поле из результата. */
 export type Claims = Record<string, unknown>;
+/** Заголовок JWS: значение undefined убирает поле из результата. */
 export type Header = Record<string, unknown>;
 
+/** Параметры {@link createTestSigner}. */
 export interface TestSignerOptions {
+    /** `iss` подписчика; по умолчанию {@link TEST_IDENTITY_ISS}. */
     readonly iss?: string;
+    /** Виды токенов в `issuer.kinds`; по умолчанию как у `createVerifier` (`user`, `service`). */
     readonly kinds?: readonly TokenKind[];
 }
 
+/** Тестовый издатель токенов с локальным JWKS; создаётся {@link createTestSigner}. */
 export interface TestSigner {
     /** Готовый TrustedIssuer для createVerifier: iss, jwksUri локального сервера, kinds. */
     readonly issuer: TrustedIssuer;
@@ -34,9 +42,9 @@ export interface TestSigner {
     signWithForeignKey(claims: Claims): Promise<string>;
     /** Три части с произвольным заголовком (любой alg) и заведомо неверной подписью. */
     forge(header: Header, claims: Claims): string;
-    /** Токен пользователя по образцу prd.md §7.1 (tenant/tenant_id задаются аргументом). */
+    /** Токен пользователя по образцу PRD Identity §7.1 (tenant/tenant_id задаются аргументом). */
     userToken(overrides?: Claims): Promise<string>;
-    /** Сервисный токен по образцу prd.md §7.2: sub = client_id. */
+    /** Сервисный токен по образцу PRD Identity §7.2: sub = client_id. */
     serviceToken(overrides?: Claims): Promise<string>;
     /** Токен агента по образцу 01 §5.4: act = agent. */
     agentToken(overrides?: Claims): Promise<string>;
@@ -50,6 +58,21 @@ interface SigningKey {
     readonly jwk: JWK;
 }
 
+/**
+ * Поднимает тестового издателя: Ed25519-ключ в памяти и JWKS на локальном HTTP-сервере `127.0.0.1`.
+ * Только для тестов: подпуть `@verdeect/auth/testing` грузится лишь с условием `development`.
+ *
+ * @param options - `iss` и `kinds` издателя.
+ * @returns {@link TestSigner}; после тестов вызвать `close()`.
+ *
+ * @example
+ * ```ts
+ * const identity = await createTestSigner();
+ * const verifier = createVerifier({ issuers: [identity.issuer], resource: TEST_RESOURCE });
+ * await verifier.verify(await identity.userToken({ tenant: 'acme', tenant_id: 'org_acme' }));
+ * await identity.close();
+ * ```
+ */
 export async function createTestSigner(options: TestSignerOptions = {}): Promise<TestSigner> {
     const iss = options.iss ?? TEST_IDENTITY_ISS;
     let current = await newKey();

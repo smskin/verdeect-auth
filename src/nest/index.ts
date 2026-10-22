@@ -1,4 +1,4 @@
-// Точка входа verdeect-auth/nest: модуль, guard и декораторы (prd.md §7.5; 01 §5.3).
+// Точка входа @verdeect/auth/nest: модуль, guard и декораторы (PRD Identity §7.5; 01 §5.3; prd.md §8).
 export {
     principalOf,
     RequireScope,

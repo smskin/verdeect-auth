@@ -1,4 +1,4 @@
-// VerdeectAuthGuard (prd.md §7.5, §8, AC-7.4; 01 §4 п. 1, §5.3, §8; UC-14). generic: guard общей библиотеки.
+// VerdeectAuthGuard (PRD Identity §7.5, §8, AC-7.4; 01 §4 п. 1, §5.3, §8; UC-14). generic: guard общей библиотеки.
 // Порядок: токен (401) → вид (@RequireUser/@RequireService, 403) → тенант (409) → области (403).
 // Логи — только sub, clientId, kind, kid, iss; токен, заголовок Authorization, email и имена не пишутся.
 import {
@@ -22,7 +22,14 @@ import {
 } from './decorators.js';
 import type { Principal, Verifier } from '../index.js';
 
-/** Токен DI проверяющего; регистрирует VerdeectAuthModule. */
+/**
+ * Токен DI проверяющего; регистрирует VerdeectAuthModule.
+ *
+ * @example
+ * ```ts
+ * constructor(@Inject(VERDEECT_VERIFIER) private readonly verifier: Verifier) {}
+ * ```
+ */
 export const VERDEECT_VERIFIER = Symbol('VERDEECT_VERIFIER');
 
 interface AuthRequest extends PrincipalCarrier {
@@ -32,6 +39,14 @@ interface AuthRequest extends PrincipalCarrier {
 /** Bearer, схема без учёта регистра, ровно один токен (RFC 6750 b64token). */
 const BEARER = /^Bearer ([A-Za-z0-9\-._~+/]+=*)$/i;
 
+/**
+ * Guard маршрутов: проверяет `Authorization: Bearer <at+jwt>` и декораторы `Require*`, кладёт
+ * {@link Principal} в `request.principal`. Ставится через `@UseGuards(VerdeectAuthGuard)` или `APP_GUARD`.
+ *
+ * Логи (`Logger` Nest, контекст `VerdeectAuthGuard`): WARN — отказ проверки (`rule`, `reason`, `iss`, `kid`);
+ * DEBUG — истёкший токен, отсутствие токена и решения декораторов. Токен и заголовок `Authorization`
+ * в лог не пишутся.
+ */
 @Injectable()
 export class VerdeectAuthGuard implements CanActivate {
     private readonly logger = new Logger(VerdeectAuthGuard.name);
@@ -41,6 +56,18 @@ export class VerdeectAuthGuard implements CanActivate {
         private readonly reflector: Reflector,
     ) {}
 
+    /**
+     * Порядок: токен → вид → компания → области. Ответ — `{error: {code, message, details}}`.
+     *
+     * @param context - контекст выполнения Nest.
+     * @returns true, если доступ разрешён.
+     * @throws HttpException 401 `UNAUTHENTICATED` — нет токена, не `Bearer` или `VerifyError` (причина не раскрывается).
+     * @throws HttpException 403 `USER_TOKEN_REQUIRED` — `@RequireUser()`, а токен не пользователя.
+     * @throws HttpException 403 `FORBIDDEN` — `@RequireService()`, а токен не сервисный.
+     * @throws HttpException 409 `TENANT_REQUIRED` — `@RequireTenant()`, а в токене нет компании.
+     * @throws HttpException 403 `SCOPE_REQUIRED` — не хватает областей `@RequireScope()`; `details.required` — недостающие.
+     * @throws Error — `@RequireUser()` и `@RequireService()` на одном маршруте, или сбой загрузки JWKS (ответ 500).
+     */
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest<AuthRequest>();
         const targets = [context.getHandler(), context.getClass()];

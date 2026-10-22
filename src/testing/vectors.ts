@@ -1,4 +1,4 @@
-// Векторы V-1…V-8 (prd.md §7.5 «векторы»; AC-7.1, AC-7.3). generic: экспортируемые данные для тестов потребителей.
+// Векторы V-1…V-8 (PRD Identity §7.5 «векторы»; AC-7.1, AC-7.3). generic: экспортируемые данные для тестов потребителей.
 // Verifier для векторов: issuers [identity.issuer, orchestrator.issuer], resource TEST_RESOURCE, допуск 30 с.
 import { TEST_RESOURCE, type Claims, type TestSigner } from './test-signer.js';
 import type { TokenKind } from '../index.js';
@@ -6,19 +6,31 @@ import type { VerifyReason, VerifyRule } from '../verify-error.js';
 
 /** Подписчики: Identity (kinds user, service) и Orchestrator (kinds agent). */
 export interface VectorSigners {
+    /** Подписчик Identity: `createTestSigner()`. */
     readonly identity: TestSigner;
+    /** Подписчик Orchestrator: `createTestSigner({ iss: TEST_ORCHESTRATOR_ISS, kinds: ['agent'] })`. */
     readonly orchestrator: TestSigner;
 }
 
+/**
+ * Ожидаемый результат вектора: `{kind, fields?}` — токен принят, `Principal` нужного вида с этими полями;
+ * `{rule, reason}` — токен отклонён `VerifyError` с этими полями.
+ */
 export type VectorExpectation =
     | { readonly kind: TokenKind; readonly fields?: Readonly<Record<string, unknown>> }
     | { readonly rule: VerifyRule; readonly reason: VerifyReason };
 
+/** Один тестовый вектор правил V-1…V-8. */
 export interface TokenVector {
+    /** Стабильный идентификатор вектора. */
     readonly id: string;
+    /** Проверяемое правило. */
     readonly rule: VerifyRule;
+    /** Описание сценария. */
     readonly title: string;
+    /** Строит токен вектора подписчиками Identity и Orchestrator. */
     token(signers: VectorSigners): Promise<string>;
+    /** Ожидаемый результат проверки. */
     readonly expect: VectorExpectation;
 }
 
@@ -41,6 +53,18 @@ function userClaims(signer: TestSigner, overrides: Claims = {}): Claims {
 
 const rejected = (rule: VerifyRule, reason: VerifyReason): VectorExpectation => ({ rule, reason });
 
+/**
+ * Векторы V-1…V-8 для тестов сервиса. Verifier для них: issuers `[identity.issuer, orchestrator.issuer]`,
+ * resource {@link TEST_RESOURCE}, допуск часов 30 с.
+ *
+ * @example
+ * ```ts
+ * it.each(tokenVectors)('$id: $title', async (vector) => {
+ *     const jwt = await vector.token({ identity, orchestrator });
+ *     // проверить ответ маршрута по vector.expect
+ * });
+ * ```
+ */
 export const tokenVectors: readonly TokenVector[] = [
     // V-1 — заголовок
     {

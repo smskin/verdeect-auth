@@ -1,11 +1,19 @@
-// Классификация проверенных claim'ов в Principal: правила V-6, V-7, V-8 (prd.md §7.5, §7.1, §7.2; 01 §5.4).
+// Классификация проверенных claim'ов в Principal: правила V-6, V-7, V-8 (PRD Identity §7.5, §7.1, §7.2; 01 §5.4).
 // generic: чистая функция ядра библиотеки, без Nest и без логов. Вызывается после V-1…V-5.
 import { VerifyError } from './verify-error.js';
 import type { AgentPrincipal, Principal, TokenKind, UserPrincipal } from './index.js';
 
 type Claims = Readonly<Record<string, unknown>>;
 
-/** Возвращает Principal или бросает VerifyError. Посторонние claim'ы (`roles`, `entitlements`…) игнорируются. */
+/**
+ * Внутренний помощник ядра (не экспортируется из пакета): строит {@link Principal} из claim'ов,
+ * прошедших V-1…V-5. Посторонние claim'ы (`roles`, `entitlements`…) игнорируются.
+ *
+ * @param claims - payload проверенного токена.
+ * @param kinds - виды токенов, разрешённые издателю.
+ * @returns `Principal` по виду токена.
+ * @throws {@link VerifyError} — нарушены V-6, V-7 или V-8.
+ */
 export function toPrincipal(claims: Claims, kinds: readonly TokenKind[]): Principal {
     const sub = claims['sub'];
     const sid = claims['sid'];
