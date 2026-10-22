@@ -16,9 +16,9 @@
 Ставьте точную версию: потребители пинят её, обновление — осознанный шаг по CHANGELOG.
 
 ```bash
-pnpm add @verdeect/auth@1.0.0 --save-exact
+pnpm add @verdeect/auth@1.0.1 --save-exact
 # или
-npm install @verdeect/auth@1.0.0 --save-exact
+npm install @verdeect/auth@1.0.1 --save-exact
 ```
 
 ## Быстрый старт

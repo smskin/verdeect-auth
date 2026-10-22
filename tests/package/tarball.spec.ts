@@ -82,10 +82,11 @@ describe('UC-4: состав и метаданные пакета @verdeect/auth
         expect(offenders).toEqual([]);
     });
 
-    it('FR-1: package.json — @verdeect/auth 1.0.0, без private, type module, engines >=22.12, sideEffects false, publishConfig public, license UNLICENSED, repository github smskin/verdeect-auth, files dist/README.md/CHANGELOG.md', () => {
+    it('FR-1: package.json — @verdeect/auth 1.x, без private, type module, engines >=22.12, sideEffects false, publishConfig public, license UNLICENSED, repository github smskin/verdeect-auth, files dist/README.md/CHANGELOG.md', () => {
+        // FR-1 задаёт 1.0.0 для первого выпуска; дальше версия растёт по UC-3, мажор 1 — без ломающих изменений (BR-1).
+        expect(manifest['version']).toMatch(/^1\.\d+\.\d+$/);
         expect(manifest).toMatchObject({
             name: '@verdeect/auth',
-            version: '1.0.0',
             type: 'module',
             engines: { node: '>=22.12' },
             sideEffects: false,

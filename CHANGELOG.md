@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-22
+
+Первый выпуск из CI через npm Trusted Publishing (OIDC) с provenance. Изменений API и поведения нет.
+
 ## [1.0.0] - 2026-10-22
 
 Вынос из `verdeect-identity` без изменения поведения, новое имя `@verdeect/auth`, подпуть `testing` закрыт для production.

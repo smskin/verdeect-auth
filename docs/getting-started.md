@@ -9,7 +9,7 @@
 Нужны Node.js ≥ 22.12 и ESM (`"type": "module"`). Версия ставится точно:
 
 ```bash
-pnpm add @verdeect/auth@1.0.0 --save-exact
+pnpm add @verdeect/auth@1.0.1 --save-exact
 ```
 
 ## 2. Peer-зависимости

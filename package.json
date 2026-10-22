@@ -1,6 +1,6 @@
 {
   "name": "@verdeect/auth",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Проверка access-токенов at+jwt для серверов ресурсов Вердикта 2.0: ядро на jose, модуль NestJS, тестовые помощники",
   "keywords": [
     "verdeect",
