@@ -2,7 +2,7 @@
 
 [← README](../README.md)
 
-Документ для мейнтейнеров. Пакет публикует только CI по защищённому тегу; ручная публикация с машины разработчика — не способ выпуска.
+Документ для мейнтейнеров. Пакет публикует только CI по защищённому тегу; ручная публикация с машины разработчика — не способ выпуска. Единственное исключение — первый выпуск 1.0.0 (см. «Первый выпуск» ниже, D-8).
 
 ## UC-3: выпуск по шагам
 
@@ -65,9 +65,9 @@
 
 ## Авторизация в npm: Trusted Publishing
 
-Пакет публикуется через npm Trusted Publishing (OIDC): job `publish` получает от GitHub короткоживущий `id-token` (`permissions: id-token: write`) и обменивает его в npm на токен публикации. Долгоживущего токена в репозитории нет. Требования: GitHub-hosted runner, npm ≥ 11.15 (job ставит его сам: `npm install -g npm@^11.15.0`), environment `npm`.
+Пакет публикуется через npm Trusted Publishing (OIDC): job `publish` получает от GitHub короткоживущий `id-token` (`permissions: id-token: write`) и обменивает его в npm на токен публикации; provenance npm создаёт автоматически. Требования: GitHub-hosted runner, npm ≥ 11.15 (job ставит его сам: `npm install -g npm@^11.15.0`), environment `npm`.
 
-npm сначала пробует OIDC и только потом `NODE_AUTH_TOKEN`. Workflow передаёт `NODE_AUTH_TOKEN` из секрета `NPM_TOKEN`, но не требует его: пустое значение — норма.
+Токенов в CI нет вовсе: ни секретов в репозитории, ни `NODE_AUTH_TOKEN` в workflow (D-8).
 
 ### Разовая настройка GitHub
 
@@ -76,15 +76,42 @@ npm сначала пробует OIDC и только потом `NODE_AUTH_TOK
 | environment `npm`  | Settings → Environments     | правило развёртывания: только теги `v*`                        |
 | ruleset тегов `v*` | Settings → Rules → Rulesets | создание — только мейнтейнеры; удаление и перезапись запрещены |
 
-### Первый выпуск (1.0.0) — с временным токеном
+### Первый выпуск (1.0.0) — вручную мейнтейнером (D-8)
 
-Trusted Publisher настраивается только для пакета, который уже есть в npm, поэтому 1.0.0 публикуется токеном:
+Trusted Publisher настраивается только для пакета, который уже есть в npm (первый выпуск через OIDC npm не поддерживает), поэтому 1.0.0 мейнтейнер публикует вручную, с 2FA и без токенов. Цена: у 1.0.0 нет provenance. Это единственная ручная публикация — со следующей версии публикует только CI.
 
-1. На npmjs.com создать granular access token: право публикации только в scope `@verdeect`, срок действия не больше 1 дня (D-8).
-2. Положить его в секрет `NPM_TOKEN` environment `npm` (Settings → Environments → `npm` → Secrets).
-3. Выпустить 1.0.0 по шагам UC-3 выше.
+1. Шаги 1–3 UC-3 выше: `main` зелёный, `version` = `1.0.0`, раздел `[1.0.0]` в CHANGELOG с датой выпуска.
+2. Поставить тег **локально**, пока его не пушить:
+
+   ```bash
+   git tag v1.0.0
+   ```
+
+3. Чистый клон этого тега, проверки и сборка:
+
+   ```bash
+   git clone --branch v1.0.0 "$(pwd)" ../verdeect-auth-release
+   cd ../verdeect-auth-release
+   make install
+   make ci
+   ```
+
+4. Вход в npm с 2FA и публикация из клона (нужна npm ≥ 11.15 — она же понадобится для `npm trust`):
+
+   ```bash
+   npm login
+   npm publish --access public
+   ```
+
+   Долгоживущие токены не создаются: `npm login` открывает вход в браузере с 2FA и сохраняет в `~/.npmrc` короткоживущий сессионный токен.
+
+5. Проверить: `npm view @verdeect/auth@1.0.0 version`.
+6. Отозвать сессионный токен: `npm logout`.
+7. Запушить тег: `git push origin v1.0.0`. Job `publish` для этого тега упадёт на проверке «версия 1.0.0 уже опубликована» — это ожидаемо и безопасно: перезаписи нет. Проверки `lint`, `test`, `build` должны быть зелёными.
 
 ### После первого выпуска — переход на OIDC
+
+Сразу после выпуска 1.0.0:
 
 1. Связать пакет с workflow (нужны npm ≥ 11.15, 2FA на аккаунте и право записи в пакет):
 
@@ -95,12 +122,10 @@ Trusted Publisher настраивается только для пакета, �
    Параметры доверия: репозиторий `smskin/verdeect-auth`, файл workflow `ci.yml`, environment `npm`, разрешение `--allow-publish`. Имена флагов сверьте с `npm trust github --help` — их задаёт npm CLI. То же можно сделать на странице пакета: Settings → Trusted Publisher.
 
 2. Запретить публикацию токенами: страница пакета → Settings → Publishing access → «Require two-factor authentication and disallow tokens».
-3. Удалить секрет `NPM_TOKEN` из environment `npm` и отозвать токен на npmjs.com.
-4. Следующий выпуск идёт через OIDC; в логе `[publish]` будет «запасной NODE_AUTH_TOKEN не задан».
+3. Удалить клон `../verdeect-auth-release`.
+4. Следующие версии (1.0.1 и далее) выпускаются только по UC-3 через CI; в логе `[publish]` будет «авторизация: OIDC (Trusted Publishing)».
 
-Если Trusted Publisher не совпадает с запуском (другой репозиторий, файл workflow или environment), `npm publish` падает с E404 — проверьте параметры из шага 1.
-
-Секреты GitHub маскирует в логах, скрипт публикации токен не печатает — только факт его наличия.
+Если Trusted Publisher не совпадает с запуском (другой репозиторий, файл workflow или environment), `npm publish` в job `publish` падает с E404 или ENEEDAUTH — проверьте параметры из шага 1.
 
 ## Где смотреть логи публикации
 

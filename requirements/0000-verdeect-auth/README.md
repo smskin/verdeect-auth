@@ -3,7 +3,7 @@
 Вынос библиотеки проверки `at+jwt` из `verdeect-identity/packages/verdeect-auth` в отдельный npm-пакет `@verdeect/auth`: упаковка, документация, выпуск 1.0.0. Поведение не меняется.
 
 - **Режим:** INIT (новый репозиторий `verdeect2/verdeect-auth`, код переносится с историей)
-- **Ревизия:** r4 · 2026-10-22
+- **Ревизия:** r5 · 2026-10-22
 - **Источник истины:** `prd.md`; контракт проверки токена — `verdeect-identity/requirements/0000-identity-server/prd.md` §7.5 (не меняется)
 - **Стек:** TypeScript (ESM, Node ≥ 22.12) · NestJS 12 (peer) · `jose` · Vitest · pnpm
 - **Специалисты:** `nestjs-specialist`, `nestjs-code`, `nestjs-generate-documentation`
@@ -45,3 +45,4 @@
 - r2 — 2026-10-22: минимальная Node 22.12 вместо 20, матрица CI 22 и 24 (D-7; FR-1, §9, §11). Затрагивает задачу 12 плана E2 и `engines` из E1.
 - r3 — 2026-10-22: репозиторий и CI — GitHub `smskin/verdeect-auth`, GitHub Actions, environment `npm` (D-8; §2, §3, FR-1, FR-11, §9, AC-8). Код E2 уже сделан так — правка приводит текст к коду.
 - r4 — 2026-10-22: публикация через npm Trusted Publishing (OIDC); `NPM_TOKEN` — только временный, для первого выпуска 1.0.0 (D-8; §3, FR-11, §9, AC-8).
+- r5 — 2026-10-22: 1.0.0 публикуется вручную с 2FA, токенов и `NPM_TOKEN` нет вовсе (D-8; §3, FR-11, §9).

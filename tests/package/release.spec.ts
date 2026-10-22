@@ -1,4 +1,4 @@
-// Выпуск версии (prd.md r4: UC-3 main, alt-1, err-1, err-2; AC-8, AC-11; FR-10, FR-11, FR-12; BR-1; D-7, D-8).
+// Выпуск версии (prd.md r5: UC-3 main, alt-1, err-1, err-2; AC-8, AC-11; FR-10, FR-11, FR-12; BR-1; D-7, D-8).
 // Сухой прогон scripts/publish.mjs против локального реестра на node:http — без сети и без публикации.
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
@@ -111,7 +111,7 @@ describe('UC-3: выпуск версии', () => {
             GITHUB_REF_NAME: tag,
             npm_config_registry: registryUrl,
             npm_config_userconfig: join(configDir, '.npmrc'),
-            // Как после удаления секрета NPM_TOKEN: скрипт не требует токена (D-8, Trusted Publishing).
+            // Как в CI: токенов нет, только OIDC (D-8, r5).
             NODE_AUTH_TOKEN: '',
         });
     }
@@ -127,7 +127,7 @@ describe('UC-3: выпуск версии', () => {
         }
     });
 
-    it('AC-8: publish нуждается во всех проверках (lint, test, build), без continue-on-error, environment npm, GitHub-hosted runner, Node 24 и npm >= 11.15, NODE_AUTH_TOKEN из secrets.NPM_TOKEN необязателен, permissions contents read и id-token write только у publish (D-8, Trusted Publishing)', () => {
+    it('AC-8: publish нуждается во всех проверках (lint, test, build), без continue-on-error, environment npm, GitHub-hosted runner, Node 24 и npm >= 11.15, без токенов (только OIDC), permissions contents read и id-token write только у publish (D-8, Trusted Publishing)', () => {
         expect(needsOf(workflow.jobs['publish']).sort()).toEqual(['build', 'lint', 'test']);
         expect(needsOf(workflow.jobs['build'])).toEqual(['test']);
         expect(needsOf(workflow.jobs['test'])).toEqual(['lint']);
@@ -146,7 +146,8 @@ describe('UC-3: выпуск версии', () => {
         expect(upgrade).toBeLessThan(publishIndex);
         const setupNode = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
         expect(setupNode?.with?.['node-version']).toBe(24);
-        expect(setupNode?.with?.['registry-url']).toBe('https://registry.npmjs.org');
+        // registry-url пишет .npmrc с _authToken=${NODE_AUTH_TOKEN} — при OIDC он не нужен.
+        expect(setupNode?.with).not.toHaveProperty('registry-url');
 
         // Минимальные права: workflow — только чтение; id-token (OIDC Trusted Publishing) — только у publish.
         expect(workflow.permissions).toEqual({ contents: 'read' });
@@ -159,7 +160,11 @@ describe('UC-3: выпуск версии', () => {
             step.run?.includes('scripts/publish.mjs'),
         );
         expect(publishStep?.run).toBe('node scripts/publish.mjs');
-        expect(publishStep?.env?.['NODE_AUTH_TOKEN']).toBe('${{ secrets.NPM_TOKEN }}');
+        // Токенов нет вовсе (D-8, r5): ни секретов, ни NODE_AUTH_TOKEN/NPM_TOKEN в jobs (комментарии не в счёт).
+        const parsed = JSON.stringify(workflow.jobs);
+        for (const forbidden of ['secrets.', 'NODE_AUTH_TOKEN', 'NPM_TOKEN']) {
+            expect(parsed, forbidden).not.toContain(forbidden);
+        }
 
         const loose = Object.entries(workflow.jobs).flatMap(([name, job]) => [
             ...(job['continue-on-error'] === undefined ? [] : [name]),
@@ -191,11 +196,11 @@ describe('UC-3: выпуск версии', () => {
         expect(runs('build')).toEqual(['make install', 'make build pack-check']);
     });
 
-    it('AC-8: тег v1.0.0 при version 1.0.0 — сухой прогон доходит до npm publish --dry-run, код 0, без NODE_AUTH_TOKEN', async () => {
+    it('AC-8: тег v1.0.0 при version 1.0.0 — сухой прогон доходит до npm publish --dry-run, код 0, авторизация только OIDC', async () => {
         const result = await dryRun(`v${version}`, 'missing');
 
         expect(result.code, describeResult(result)).toBe(0);
-        expect(result.stdout).toContain('NODE_AUTH_TOKEN не задан');
+        expect(result.stdout).toContain('авторизация: OIDC (Trusted Publishing)');
         expect(result.stdout).toContain(`${PUBLISH_LINE} --access public --dry-run`);
     });
 
@@ -258,7 +263,7 @@ describe('UC-3: выпуск версии', () => {
         );
     });
 
-    it('AC-11: docs/releasing.md описывает UC-3 — version, CHANGELOG, тег vX.Y.Z, мажорная версия при ломающем изменении (BR-1), Trusted Publishing: первый выпуск с временным NPM_TOKEN, затем npm trust github и запрет токенов (D-8)', async () => {
+    it('AC-11: docs/releasing.md описывает UC-3 — version, CHANGELOG, тег vX.Y.Z, мажорная версия при ломающем изменении (BR-1), Trusted Publishing: первый выпуск вручную с 2FA, затем npm trust github и запрет токенов, без NPM_TOKEN (D-8)', async () => {
         const releasing = await readFile(join(REPO_ROOT, 'docs/releasing.md'), 'utf8');
 
         for (const fragment of [
@@ -269,12 +274,14 @@ describe('UC-3: выпуск версии', () => {
             'мажорная',
             'Как обновиться',
             'Trusted Publishing',
-            'NPM_TOKEN',
+            'npm login',
+            'npm publish --access public',
             'npm trust github',
             'disallow tokens',
-            'Удалить секрет `NPM_TOKEN`',
         ]) {
             expect(releasing, fragment).toContain(fragment);
         }
+        // Токены в CI не используются вовсе (r5): документ не предлагает секрет NPM_TOKEN.
+        expect(releasing).not.toContain('NPM_TOKEN');
     });
 });

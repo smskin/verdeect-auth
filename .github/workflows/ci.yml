@@ -1,4 +1,4 @@
-# CI и выпуск @verdeect/auth (prd.md r4: FR-11, UC-3, AC-8, §11, D-7, D-8 — GitHub Actions, npm Trusted Publishing).
+# CI и выпуск @verdeect/auth (prd.md r5: FR-11, UC-3, AC-8, §11, D-7, D-8 — GitHub Actions, npm Trusted Publishing).
 #
 # Jobs FR-11, связанные через needs: lint → test → build → publish; каждый ставит зависимости сам (make install).
 # Проверки — на каждый push в ветку и pull_request. test — матрица Node 22 и 24; lint и build — Node 22
@@ -9,8 +9,9 @@
 # Разовая настройка (docs/releasing.md):
 #   - environment `npm` с правилом развёртывания «только теги v*»;
 #   - ruleset на теги v*: создание — только мейнтейнеры, удаление и перезапись запрещены;
-#   - первый выпуск: временный секрет NPM_TOKEN в environment `npm` (пакета ещё нет в npm);
-#   - затем npm trust github (репозиторий, ci.yml, environment npm), запрет публикации токенами, секрет удаляется.
+#   - секретов нет: NPM_TOKEN / NODE_AUTH_TOKEN не используются, публикация только через OIDC (id-token: write);
+#   - 1.0.0 мейнтейнер публикует вручную (D-8), затем npm trust github (smskin/verdeect-auth, ci.yml, environment npm)
+#     и запрет публикации токенами. Job publish для тега v1.0.0 падает на «версия уже опубликована» — это ожидаемо.
 # continue-on-error нигде не используется.
 name: ci
 
@@ -94,12 +95,12 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
+      # Без registry-url: .npmrc с _authToken=${NODE_AUTH_TOKEN} не нужен, реестр по умолчанию — registry.npmjs.org.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      # Trusted Publishing и npm trust требуют npm >= 11.15; npm из Node 24 может быть старее.
+      # Trusted Publishing требует npm >= 11.15; npm из Node 24 может быть старее.
       - name: npm >= 11.15
         run: npm install -g npm@^11.15.0
       - name: npm version
@@ -108,9 +109,6 @@ jobs:
         with:
           name: dist
           path: dist/
-      # npm сначала пробует OIDC (Trusted Publishing), затем NODE_AUTH_TOKEN. Секрет NPM_TOKEN нужен только
-      # для первого выпуска 1.0.0 (пакета ещё нет в npm); после `npm trust github` его удаляют, пустое значение — норма.
+      # Авторизация — только OIDC (Trusted Publishing): npm обменивает id-token на токен публикации. Секретов нет (D-8).
       - name: publish
         run: node scripts/publish.mjs
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
