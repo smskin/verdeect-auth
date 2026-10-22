@@ -1,0 +1,6 @@
+# Настройки pnpm для репозитория из одного пакета (списка packages нет).
+# minimumReleaseAge — как в Identity: явно не задан, действует значение pnpm по умолчанию (сутки).
+# Исключения minimumReleaseAgeExclude — только с обоснованием и условием снятия.
+allowBuilds:
+  '@swc/core': true
+  esbuild: true

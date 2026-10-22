@@ -1,5 +1,3 @@
-[Back to project README](../../README.md)
-
 # verdeect-auth
 
 > Проверка токенов доступа `at+jwt` для серверов ресурсов «Вердикта» (prd.md §7.5, `01` §5.3–5.4).
@@ -170,5 +168,5 @@ corepack pnpm --filter verdeect-auth build      # dist/
 
 ## See Also
 
-- [Разработка](../../docs/development.md) — тесты, Makefile
-- [prd.md §7.5](../../requirements/0000-identity-server/prd.md) — требования к библиотеке
+- [Разработка](#разработка) — тесты, Makefile
+- PRD Identity §7.5 (репозиторий verdeect-identity) — требования к библиотеке
