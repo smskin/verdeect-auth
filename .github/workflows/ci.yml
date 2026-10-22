@@ -1,0 +1,108 @@
+# CI и выпуск @verdeect/auth (prd.md r3: FR-11, UC-3, AC-8, §11, D-7, D-8 — GitHub Actions).
+#
+# Jobs FR-11, связанные через needs: lint → test → build → publish; каждый ставит зависимости сам (make install).
+# Проверки — на каждый push в ветку и pull_request. test — матрица Node 22 и 24; остальные jobs — Node 22
+# (минимальная поддерживаемая версия, engines.node ">=22.12").
+# publish — только на тег v<major>.<minor>.<patch> после зелёных проверок: scripts/publish.mjs сверяет тег
+# с version, проверяет, что версии нет в npm, и запускает npm publish --access public из собранного dist/.
+#
+# Разовая настройка репозитория (docs/releasing.md):
+#   - environment `npm` с правилом развёртывания «только теги v*»;
+#   - секрет NPM_TOKEN (automation token npmjs.com, scope @verdeect) в environment `npm` — GitHub маскирует его в логах;
+#   - ruleset на теги v*: создание — только мейнтейнеры, удаление и перезапись запрещены.
+# continue-on-error нигде не используется.
+name: ci
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: make install
+        run: make install
+      - name: make lint
+        run: make lint
+      - name: make analyse
+        run: make analyse
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - name: make install
+        run: make install
+      - name: make test
+        run: make test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: make install
+        run: make install
+      - name: make build pack-check
+        run: make build pack-check
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: [lint, test, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: npm
+    # Права job заменяют права workflow целиком: contents — для checkout, id-token — для provenance npm.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - name: publish
+        run: node scripts/publish.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
