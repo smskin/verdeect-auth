@@ -58,7 +58,20 @@ verdeect-auth/
 ├── .prettierrc.json
 ├── .prettierignore
 ├── vitest.config.ts              # unit-контур
-└── vitest.package.config.ts      # контур проверок пакета
+├── vitest.package.config.ts      # контур проверок пакета
+└── Makefile                      # единая точка входа: make help, make ci
+```
+
+## Команды
+
+```bash
+make install     # зависимости по pnpm-lock.yaml
+make lint        # ESLint + Prettier check
+make analyse     # tsc --noEmit
+make test        # unit-тесты; make test FILTER='V-2'
+make build       # dist/ (.js + .d.ts)
+make pack-check  # publint, attw esm-only, архив и проект-потребитель
+make ci          # lint analyse test build pack-check
 ```
 
 ## Ключевые точки входа
@@ -68,6 +81,7 @@ verdeect-auth/
 | `src/index.ts`         | `@verdeect/auth` — публичный контракт ядра                                                |
 | `src/nest/index.ts`    | `@verdeect/auth/nest` — модуль, guard, декораторы                                         |
 | `src/testing/index.ts` | `@verdeect/auth/testing` — подписчик и векторы (только условие `development`)             |
+| `Makefile`             | единая точка входа для проверок и сборки (`make ci`)                                      |
 | `package.json`         | `exports`, зависимости, скрипты `typecheck`, `lint`, `format:check`, `test`, `pack:check` |
 | `tsconfig.build.json`  | сборка `tsc` в `dist/` без spec-файлов                                                    |
 | `vitest.config.ts`     | конфигурация тестов                                                                       |
