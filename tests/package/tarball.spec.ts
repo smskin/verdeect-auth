@@ -1,4 +1,4 @@
-// Состав и метаданные архива @verdeect/auth (prd.md UC-4; AC-1, AC-4; FR-1–FR-4; BR-3, BR-4; EC-3).
+// Состав и метаданные архива @verdeect/auth (prd.md r3 UC-4; AC-1, AC-4; FR-1–FR-4, FR-12; BR-3, BR-4; EC-3; D-7, D-8).
 import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
@@ -55,6 +55,7 @@ describe('UC-4: состав и метаданные пакета @verdeect/auth
         const required = [
             'package.json',
             'README.md',
+            'CHANGELOG.md',
             ...ENTRY_POINTS.flatMap((entry) => [`${entry}.js`, `${entry}.d.ts`]),
         ];
         expect(required.filter((path) => !files.includes(path))).toEqual([]);
@@ -81,16 +82,16 @@ describe('UC-4: состав и метаданные пакета @verdeect/auth
         expect(offenders).toEqual([]);
     });
 
-    it('FR-1: package.json — @verdeect/auth 1.0.0, без private, type module, engines >=20, sideEffects false, publishConfig public, license UNLICENSED, repository github smskin/verdeect-auth, files dist/README.md/CHANGELOG.md', () => {
+    it('FR-1: package.json — @verdeect/auth 1.0.0, без private, type module, engines >=22.12, sideEffects false, publishConfig public, license UNLICENSED, repository github smskin/verdeect-auth, files dist/README.md/CHANGELOG.md', () => {
         expect(manifest).toMatchObject({
             name: '@verdeect/auth',
             version: '1.0.0',
             type: 'module',
-            engines: { node: '>=20' },
+            engines: { node: '>=22.12' },
             sideEffects: false,
             publishConfig: { access: 'public' },
             license: 'UNLICENSED',
-            repository: { type: 'git', url: 'git+ssh://git@github.com/smskin/verdeect-auth.git' },
+            repository: { type: 'git', url: 'git+https://github.com/smskin/verdeect-auth.git' },
             files: ['dist', 'README.md', 'CHANGELOG.md'],
         });
         expect(manifest).not.toHaveProperty('private');

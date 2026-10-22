@@ -31,16 +31,21 @@ interface ExecFailure {
     readonly stderr?: string;
 }
 
-/** Запускает команду без shell и возвращает код, stdout и stderr; не выбрасывает при ненулевом коде. */
+/**
+ * Запускает команду без shell и возвращает код, stdout и stderr; не выбрасывает при ненулевом коде.
+ * `env` дополняет окружение процесса: execFile заменяет окружение целиком, без слияния пропал бы PATH.
+ */
 export async function runCommand(
     command: string,
     args: readonly string[],
     cwd: string,
+    env: Readonly<Record<string, string>> = {},
 ): Promise<CommandResult> {
     console.info(`[package-check] ${command} ${args.join(' ')} (cwd: ${cwd})`);
     try {
         const { stdout, stderr } = await execFileAsync(command, args, {
             cwd,
+            env: { ...process.env, ...env },
             maxBuffer: 64 * 1024 * 1024,
             // Меньше testTimeout/hookTimeout (300 с): зависший процесс убивается вместе с упавшим тестом.
             timeout: COMMAND_TIMEOUT_MS,
