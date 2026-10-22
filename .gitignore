@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.tgz
+.npmrc
+
+# Windows: метаданные загрузки
+*:Zone.Identifier
+*Zone.Identifier
